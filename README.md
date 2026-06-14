@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-# tcc_prototipo_captura_requisicoes
-Implementando protótipo proposto no meu trabalho de conclusão.
-=======
 # PhishGuard — Monitor de Rede Doméstica (MVP)
 
 O **PhishGuard** é um protótipo de sistema de monitoramento de rede doméstica desenvolvido como Trabalho de Conclusão de Curso (TCC) para o curso de Análise e Desenvolvimento de Sistemas na **UNISINOS (2026)**. 
