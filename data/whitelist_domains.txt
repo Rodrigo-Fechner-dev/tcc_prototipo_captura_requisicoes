@@ -1,0 +1,167 @@
+# PhishGuard — Whitelist de Domínios Confiáveis
+# Domínios legítimos conhecidos para reduzir falsos positivos.
+# Formato: um domínio por linha. Linhas com # são comentários.
+
+# === Serviços Google ===
+google.com
+google.com.br
+googleapis.com
+googlevideo.com
+gstatic.com
+googleusercontent.com
+google-analytics.com
+googletagmanager.com
+youtube.com
+ytimg.com
+ggpht.com
+gmail.com
+goog.gl
+android.com
+chromium.org
+
+# === Microsoft ===
+microsoft.com
+microsoftonline.com
+live.com
+live.net
+outlook.com
+office.com
+office365.com
+azure.com
+bing.com
+msn.com
+windows.com
+windowsupdate.com
+xbox.com
+skype.com
+linkedin.com
+github.com
+visualstudio.com
+msedge.net
+msftconnecttest.com
+
+# === Apple ===
+apple.com
+icloud.com
+apple-dns.net
+mzstatic.com
+cdn-apple.com
+
+# === Amazon / AWS ===
+amazon.com
+amazon.com.br
+amazonaws.com
+cloudfront.net
+amazonws.com
+
+# === Meta / Facebook ===
+facebook.com
+fbcdn.net
+instagram.com
+whatsapp.com
+whatsapp.net
+fb.com
+messenger.com
+
+# === Cloudflare / CDNs ===
+cloudflare.com
+cloudflare-dns.com
+cloudflareinsights.com
+cdnjs.cloudflare.com
+akamai.net
+akamaized.net
+akamaihd.net
+fastly.net
+edgecastcdn.net
+
+# === Serviços populares ===
+twitter.com
+x.com
+netflix.com
+nflxvideo.net
+spotify.com
+reddit.com
+wikipedia.org
+wikimedia.org
+yahoo.com
+paypal.com
+dropbox.com
+zoom.us
+slack.com
+notion.so
+figma.com
+canva.com
+adobe.com
+twitch.tv
+
+# === Bancos e serviços brasileiros ===
+bb.com.br
+itau.com.br
+bradesco.com.br
+caixa.gov.br
+santander.com.br
+nubank.com.br
+inter.co
+c6bank.com.br
+bancopan.com.br
+safra.com.br
+sicredi.com.br
+sicoob.com.br
+banrisul.com.br
+original.com.br
+
+# === E-commerce brasileiro ===
+mercadolivre.com.br
+mercadopago.com.br
+magazineluiza.com.br
+americanas.com.br
+casasbahia.com.br
+submarino.com.br
+shopee.com.br
+aliexpress.com
+shopify.com
+
+# === Governo ===
+gov.br
+receita.fazenda.gov.br
+esocial.gov.br
+dataprev.gov.br
+inss.gov.br
+detran.rs.gov.br
+
+# === DNS / Infraestrutura ===
+in-addr.arpa
+ip6.arpa
+local
+localhost
+ntp.org
+pool.ntp.org
+debian.org
+ubuntu.com
+
+# === Gaming ===
+roblox.com
+epicgames.com
+steampowered.com
+steamcommunity.com
+valve.net
+ea.com
+ubisoft.com
+riotgames.com
+
+# === CDNs e Infraestrutura Web ===
+creativecdn.com
+jsdelivr.net
+unpkg.com
+bootstrapcdn.com
+fontawesome.com
+fonts.googleapis.com
+fonts.gstatic.com
+sentry.io
+
+# === Telemetria e Serviços de Sistema ===
+exp-tas.com
+msftconnecttest.com
+digicert.com
+letsencrypt.org
+globalsign.com

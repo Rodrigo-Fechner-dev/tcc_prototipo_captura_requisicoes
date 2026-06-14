@@ -1,0 +1,84 @@
+# PhishGuard — Blacklist de Domínios Maliciosos
+# Compilado de fontes públicas: PhishTank, OpenPhish, URLhaus
+# Última atualização: 2026-03-31
+# Formato: um domínio por linha. Linhas com # são comentários.
+
+# === Phishing conhecidos (exemplos compilados) ===
+secure-login-verify.com
+account-verify-update.com
+paypal-secure-login.net
+microsoft-verify.xyz
+apple-id-verify.top
+netflix-billing-update.com
+amazon-security-alert.club
+banco-bradesco-atualizar.com
+itau-seguranca-digital.xyz
+nubank-verificacao.top
+caixa-atualizar-cadastro.com
+santander-seguranca.club
+mercadolivre-confirmacao.tk
+magazineluiza-promocao.ml
+
+# === Domínios de phishing genéricos ===
+secure-account-login.com
+verify-your-identity.net
+update-payment-info.org
+confirm-account-now.xyz
+your-account-suspended.top
+urgent-security-update.club
+login-verification-required.com
+password-reset-confirm.net
+billing-update-required.org
+suspicious-activity-alert.xyz
+
+# === Typosquatting de marcas globais ===
+g00gle.com
+gogle.com
+googel.com
+g0ogle.com
+faceb00k.com
+faceboook.com
+facebok.com
+twiter.com
+twiitter.com
+rnicrosoft.com
+micosoft.com
+mircosoft.com
+amaz0n.com
+amazn.com
+arnazon.com
+paypa1.com
+paypai.com
+netfliix.com
+netfl1x.com
+instaqram.com
+instagran.com
+linkedln.com
+1inkedin.com
+yah00.com
+microsoftonline-login.com
+apple-support-verify.com
+
+# === Typosquatting de marcas brasileiras ===
+bradesc0.com.br
+ltau.com.br
+1tau.com.br
+caxia.gov.br
+nub4nk.com.br
+mercadollvre.com.br
+mercadolivre-ofertas.xyz
+magazineluiz4.com.br
+americannas.com.br
+casasbahi4.com.br
+submarinno.com.br
+
+# === Domínios suspeitos (campanhas conhecidas) ===
+bit-ly-redirect.com
+short-url-verify.net
+tinyurl-secure.com
+dropbox-shared-file.xyz
+google-docs-view.top
+onedrive-shared.club
+icloud-photos-view.tk
+whatsapp-verify.ml
+telegram-confirm.ga

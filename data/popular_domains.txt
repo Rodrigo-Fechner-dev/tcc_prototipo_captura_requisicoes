@@ -1,0 +1,82 @@
+# PhishGuard — Domínios Populares para Detecção de Typosquatting
+# Estes são os domínios legítimos mais acessados. O motor heurístico
+# compara domínios capturados contra esta lista usando distância de
+# Levenshtein para detectar variantes fraudulentas.
+#
+# Formato: um domínio por linha. Linhas com # são comentários.
+
+# === Buscadores ===
+google.com
+google.com.br
+bing.com
+yahoo.com
+
+# === Redes Sociais ===
+facebook.com
+instagram.com
+twitter.com
+linkedin.com
+tiktok.com
+reddit.com
+pinterest.com
+
+# === E-mail ===
+gmail.com
+outlook.com
+hotmail.com
+yahoo.com
+
+# === Streaming ===
+netflix.com
+spotify.com
+youtube.com
+twitch.tv
+primevideo.com
+globoplay.com
+hbomax.com
+
+# === E-commerce Global ===
+amazon.com
+ebay.com
+aliexpress.com
+shopee.com
+shopify.com
+
+# === E-commerce Brasil ===
+mercadolivre.com.br
+magazineluiza.com.br
+americanas.com.br
+casasbahia.com.br
+submarino.com.br
+shopee.com.br
+
+# === Bancos Brasil ===
+bb.com.br
+itau.com.br
+bradesco.com.br
+caixa.gov.br
+santander.com.br
+nubank.com.br
+inter.co
+c6bank.com.br
+banrisul.com.br
+
+# === Pagamentos ===
+paypal.com
+mercadopago.com.br
+pagseguro.com.br
+picpay.com
+
+# === Tecnologia ===
+microsoft.com
+apple.com
+github.com
+dropbox.com
+adobe.com
+zoom.us
+slack.com
+notion.so
+
+# === Governo ===
+gov.br
+receita.fazenda.gov.br
