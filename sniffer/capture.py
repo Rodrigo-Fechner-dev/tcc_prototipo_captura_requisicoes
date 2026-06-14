@@ -198,7 +198,6 @@ class DNSCapture:
             # DNS Response (qr=1)
             elif dns_layer.qr == 1 and dns_layer.an:
                 domain = self._decode_domain(dns_layer.qd.qname) if dns_layer.qd else "N/A"
-                traffic_type = self._classify_traffic_type(domain)
                 qtype = QUERY_TYPES.get(dns_layer.qd.qtype, "?") if dns_layer.qd else "?"
                 answers = self._extract_answers(dns_layer)
 
@@ -210,7 +209,7 @@ class DNSCapture:
                     dst_ip=dst_ip,
                     protocol=protocol,
                     event_type="response",
-                    traffic_type=traffic_type,
+                    traffic_type=TrafficType.CACHE,
                     answers=answers,
                 )
                 self._enqueue(event)

@@ -8,6 +8,8 @@ lookup performance.
 Sources:
     - OpenPhish community feed
     - URLhaus (abuse.ch)
+    - PhishTank verified online phishing
+    - CERT Polska Warning List
     - Static curated list (data/blacklist_domains.txt)
 """
 

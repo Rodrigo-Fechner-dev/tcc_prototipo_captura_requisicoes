@@ -415,37 +415,44 @@ class LegendPanel(ctk.CTkFrame):
         # Title
         ctk.CTkLabel(
             self, text="Legenda de Tráfego",
-            font=ctk.CTkFont(size=18, weight="bold")
-        ).pack(pady=(15, 15), padx=15, anchor="w")
+            font=ctk.CTkFont(size=17, weight="bold")
+        ).pack(pady=(12, 8), padx=15, anchor="w")
 
         # Active
         self._add_legend_item("Ativo", "#ffffff", "Navegação direta.")
         
         # Background
-        self._add_legend_item("Standby", "#666666", "Segundo plano (Telemetria, Sincronização, Ping).")
+        self._add_legend_item("Standby", "#666666", "Segundo plano, telemetria e ping.")
         
         # CDN
         self._add_legend_item("CDN", "#a29bfe", "Anúncios, rastreadores e infraestrutura.")
 
+        # Socket/cache
+        self._add_legend_item(
+            "Requisição registrada localmente",
+            "#74b9ff",
+            "Resposta DNS ou entrada do cache/socket local.",
+        )
+
         # Spacer
-        ctk.CTkFrame(self, height=2, fg_color="#333333").pack(fill="x", padx=15, pady=(20, 10))
+        ctk.CTkFrame(self, height=2, fg_color="#333333").pack(fill="x", padx=15, pady=(12, 8))
 
         # Threat Levels
         ctk.CTkLabel(
             self, text="Ameaças",
-            font=ctk.CTkFont(size=18, weight="bold")
-        ).pack(pady=(10, 15), padx=15, anchor="w")
+            font=ctk.CTkFont(size=17, weight="bold")
+        ).pack(pady=(6, 8), padx=15, anchor="w")
 
         self._add_legend_item("Perigoso", "#e74c3c", "Bloqueado por Blacklist ou regras críticas.")
         self._add_legend_item("Suspeito", "#f39c12", "Comportamento de phishing (ex: Typosquatting).")
 
     def _add_legend_item(self, title: str, color: str, desc: str):
         container = ctk.CTkFrame(self, fg_color="transparent")
-        container.pack(fill="x", padx=15, pady=5)
+        container.pack(fill="x", padx=15, pady=3)
         
         # Color circle/dot
-        dot = ctk.CTkLabel(container, text="●", text_color=color, font=ctk.CTkFont(size=18))
-        dot.pack(side="left", padx=(0, 10))
+        dot = ctk.CTkLabel(container, text="●", text_color=color, font=ctk.CTkFont(size=16))
+        dot.pack(side="left", padx=(0, 8))
         
         text_frame = ctk.CTkFrame(container, fg_color="transparent")
         text_frame.pack(side="left", fill="x", expand=True)
@@ -457,5 +464,5 @@ class LegendPanel(ctk.CTkFrame):
         
         ctk.CTkLabel(
             text_frame, text=desc, text_color="#888888",
-            font=ctk.CTkFont(size=11), anchor="w", justify="left"
+            font=ctk.CTkFont(size=10), anchor="w", justify="left", wraplength=250
         ).pack(fill="x")

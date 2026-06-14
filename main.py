@@ -22,7 +22,7 @@ from pathlib import Path
 # Ensure project root is in path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from config import config, LOGS_DIR
+from config import LOGS_DIR
 
 def setup_logging():
     """Configure application logging."""
@@ -33,7 +33,6 @@ def setup_logging():
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
         handlers=[
-            logging.FileHandler(config.log_file, encoding="utf-8"),
             logging.StreamHandler(sys.stdout),
         ],
     )

@@ -15,6 +15,7 @@ class TrafficType(Enum):
     ACTIVE = "active"           # User-driven browsing
     BACKGROUND = "background"   # Telemetry, syncs, background apps
     CDN = "cdn"                 # Content Delivery Networks, Ads, Trackers
+    CACHE = "cache"             # Resolver/socket cache entries and DNS answers
 
     @property
     def label_pt(self) -> str:
@@ -22,6 +23,7 @@ class TrafficType(Enum):
             "active": "Ativo",
             "background": "Segundo Plano",
             "cdn": "CDN / Rastreador",
+            "cache": "Socket / Cache",
         }
         return labels[self.value]
 

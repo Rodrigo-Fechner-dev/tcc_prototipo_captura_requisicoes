@@ -68,7 +68,7 @@ class AppConfig:
     sniffer: SnifferConfig = field(default_factory=SnifferConfig)
     analyzer: AnalyzerConfig = field(default_factory=AnalyzerConfig)
     gui: GUIConfig = field(default_factory=GUIConfig)
-    log_file: str = str(LOGS_DIR / "phishguard.log")
+    log_file: str = str(LOGS_DIR / "phishguard_resumo.txt")
     export_dir: str = str(BASE_DIR / "exports")
 
 

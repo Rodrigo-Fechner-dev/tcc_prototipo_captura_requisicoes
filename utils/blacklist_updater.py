@@ -7,6 +7,8 @@ and merges them into the local blacklist file.
 Sources:
     - OpenPhish Community Feed (free, no API key)
     - URLhaus by abuse.ch (free, open data)
+    - PhishTank verified online phishing
+    - CERT Polska Warning List
 
 Usage:
     python -m utils.blacklist_updater
@@ -14,8 +16,11 @@ Usage:
 
 import logging
 import sys
+import csv
+import io
 from pathlib import Path
 from datetime import datetime
+from urllib.parse import urlsplit
 
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -29,15 +34,47 @@ SOURCES = {
     "openphish": {
         "url": "https://openphish.com/feed.txt",
         "description": "OpenPhish Community Feed",
+        "format": "urls",
     },
     "urlhaus": {
         "url": "https://urlhaus.abuse.ch/downloads/text_recent/",
         "description": "URLhaus Recent URLs (abuse.ch)",
+        "format": "urls",
     },
     "phishtank": {
         "url": "http://data.phishtank.com/data/online-valid.csv",
         "description": "PhishTank Verified Online Phishing",
+        "format": "phishtank_csv",
     },
+    "cert_pl": {
+        "url": "https://hole.cert.pl/domains/v2/domains.txt",
+        "description": "CERT Polska Warning List",
+        "format": "domains",
+    },
+}
+
+# Hosts where blocking the whole hostname from a URL feed is usually too broad
+# for DNS-only detection. Exact phishing subdomains remain allowed.
+HIGH_FALSE_POSITIVE_HOSTS = {
+    "github.com",
+    "www.github.com",
+    "raw.githubusercontent.com",
+    "docs.google.com",
+    "drive.google.com",
+    "script.google.com",
+    "sites.google.com",
+    "forms.gle",
+    "form.jotform.com",
+    "eu.jotform.com",
+    "www.jotform.com",
+    "0.gravatar.com",
+    "www.dropbox.com",
+    "onedrive.live.com",
+    "storage.googleapis.com",
+    "s3.amazonaws.com",
+    "linktr.ee",
+    "bit.ly",
+    "tinyurl.com",
 }
 
 
@@ -48,13 +85,41 @@ def _extract_domains_from_urls(urls: list[str]) -> set[str]:
         url = url.strip()
         if not url or url.startswith("#"):
             continue
-        # Remove protocol
-        domain = url.replace("https://", "").replace("http://", "")
-        # Remove path, port, query
-        domain = domain.split("/")[0].split(":")[0].split("?")[0]
+        parsed = urlsplit(url if "://" in url else f"http://{url}")
+        domain = parsed.hostname or ""
         domain = domain.lower().strip(".")
-        if domain and "." in domain:
+        if _is_usable_domain(domain):
             domains.add(domain)
+    return domains
+
+
+def _is_usable_domain(domain: str) -> bool:
+    """Keep domains that are specific enough for DNS-level blocking."""
+    return bool(domain and "." in domain and domain not in HIGH_FALSE_POSITIVE_HOSTS)
+
+
+def _extract_domains_from_lines(lines: list[str]) -> set[str]:
+    """Extract already-normalized domain lists."""
+    domains = set()
+    for line in lines:
+        domain = line.strip().lower().strip(".")
+        if not domain or domain.startswith("#"):
+            continue
+        if "/" in domain or "://" in domain:
+            domains.update(_extract_domains_from_urls([domain]))
+            continue
+        if _is_usable_domain(domain):
+            domains.add(domain)
+    return domains
+
+
+def _extract_domains_from_phishtank_csv(text: str) -> set[str]:
+    """Extract URL column from PhishTank CSV safely."""
+    domains = set()
+    reader = csv.DictReader(io.StringIO(text))
+    for row in reader:
+        url = row.get("url", "")
+        domains.update(_extract_domains_from_urls([url]))
     return domains
 
 
@@ -70,21 +135,14 @@ def download_source(name: str, source: dict) -> set[str]:
         })
         response.raise_for_status()
 
-        lines = response.text.strip().split("\n")
+        source_format = source.get("format", "urls")
+        lines = response.text.strip().splitlines()
 
-        if name == "phishtank":
-            # PhishTank CSV: skip header, URL is in column 1
-            domains = set()
-            for line in lines[1:]:  # skip header
-                parts = line.split(",")
-                if len(parts) >= 2:
-                    url_field = parts[1].strip('"')
-                    extracted = _extract_domains_from_urls([url_field])
-                    domains.update(extracted)
-            return domains
-        else:
-            # Plain text URL list (OpenPhish, URLhaus)
-            return _extract_domains_from_urls(lines)
+        if source_format == "phishtank_csv":
+            return _extract_domains_from_phishtank_csv(response.text)
+        if source_format == "domains":
+            return _extract_domains_from_lines(lines)
+        return _extract_domains_from_urls(lines)
 
     except requests.RequestException as e:
         logger.warning("Failed to download %s: %s", desc, e)
@@ -121,8 +179,9 @@ def update_blacklist(sources: list[str] | None = None):
         with open(blacklist_path, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
-                if line and not line.startswith("#"):
-                    existing.add(line.lower())
+                domain = line.lower()
+                if domain and not domain.startswith("#") and _is_usable_domain(domain):
+                    existing.add(domain)
 
     # Count new additions
     new_domains = all_domains - existing
@@ -153,5 +212,4 @@ if __name__ == "__main__":
     print("PhishGuard — Atualizador de Blacklist")
     print("=" * 50)
 
-    # Try OpenPhish and URLhaus (most reliable free sources)
-    update_blacklist(["openphish", "urlhaus"])
+    update_blacklist(["openphish", "urlhaus", "phishtank", "cert_pl"])
