@@ -1,10 +1,4 @@
 """
-PhishGuard — Blacklist Checker
-
-Loads domains from local blacklist/whitelist files and checks
-incoming DNS queries against them. Uses Python sets for O(1)
-lookup performance.
-
 Sources:
     - OpenPhish community feed
     - URLhaus (abuse.ch)
@@ -22,21 +16,12 @@ logger = logging.getLogger(__name__)
 
 
 class BlacklistChecker:
-    """
-    Checks domains against local blacklist and whitelist files.
-
-    The blacklist contains known phishing/malicious domains.
-    The whitelist contains trusted domains to reduce false positives.
-    Both use set-based lookup for O(1) performance.
-    """
-
     def __init__(self):
         self._blacklist: set[str] = set()
         self._whitelist: set[str] = set()
         self._load_lists()
 
     def _load_lists(self):
-        """Load blacklist and whitelist from files."""
         self._blacklist = self._load_file(config.analyzer.blacklist_file, "blacklist")
         self._whitelist = self._load_file(config.analyzer.whitelist_file, "whitelist")
         logger.info(
@@ -45,8 +30,17 @@ class BlacklistChecker:
         )
 
     @staticmethod
-    def _load_file(filepath: str, name: str) -> set[str]:
-        """Load domains from a text file (one domain per line)."""
+    def _normalize_domain(value: str) -> str:
+
+        domain = value.strip().lower()
+        domain = domain.replace("https://", "").replace("http://", "")
+        domain = domain.split("/")[0]
+        domain = domain.split(":")[0]
+        return domain.strip(".")
+
+    @classmethod
+    def _load_file(cls, filepath: str, name: str) -> set[str]:
+
         path = Path(filepath)
         if not path.exists():
             logger.warning("%s file not found: %s", name, filepath)
@@ -58,15 +52,75 @@ class BlacklistChecker:
                 line = line.strip().lower()
                 # Skip comments and empty lines
                 if line and not line.startswith("#"):
-                    # Remove protocol prefix if present
-                    domain = line.replace("https://", "").replace("http://", "")
-                    # Remove path
-                    domain = domain.split("/")[0]
-                    # Remove port
-                    domain = domain.split(":")[0]
+                    domain = cls._normalize_domain(line)
                     if domain:
                         domains.add(domain)
         return domains
+
+    def _resolve_list(self, list_type: str) -> tuple[set[str], str]:
+
+        if list_type == "whitelist":
+            return self._whitelist, config.analyzer.whitelist_file
+        if list_type == "blacklist":
+            return self._blacklist, config.analyzer.blacklist_file
+        raise ValueError(f"Unknown list type: {list_type!r}")
+
+    def get_domains(self, list_type: str) -> list[str]:
+        """Return all domains of a list, alphabetically sorted."""
+        target_set, _ = self._resolve_list(list_type)
+        return sorted(target_set)
+
+    def add_domain(self, domain: str, list_type: str) -> bool:
+
+        domain = self._normalize_domain(domain)
+        if not domain:
+            return False
+
+        target_set, filepath = self._resolve_list(list_type)
+        if domain in target_set:
+            return False
+
+        target_set.add(domain)
+        path = Path(filepath)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # Append on a fresh line, tolerating files that don't end with "\n".
+        prefix = ""
+        if path.exists() and path.stat().st_size > 0:
+            with open(path, "rb") as f:
+                f.seek(-1, 2)
+                if f.read(1) != b"\n":
+                    prefix = "\n"
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(f"{prefix}{domain}\n")
+        logger.info("Added %s to %s", domain, list_type)
+        return True
+
+    def remove_domain(self, domain: str, list_type: str) -> bool:
+        """
+        Remove a domain from a list (memory + file).
+
+        Rewrites the file, dropping every line that matches the domain
+        while preserving comments and other entries. Returns True if removed.
+        """
+        domain = self._normalize_domain(domain)
+        target_set, filepath = self._resolve_list(list_type)
+        if domain not in target_set:
+            return False
+
+        target_set.discard(domain)
+        path = Path(filepath)
+        if path.exists():
+            kept_lines = []
+            with open(path, "r", encoding="utf-8") as f:
+                for line in f:
+                    stripped = line.strip().lower()
+                    if stripped and not stripped.startswith("#"):
+                        if self._normalize_domain(stripped) == domain:
+                            continue
+                    kept_lines.append(line.rstrip("\n"))
+            path.write_text("\n".join(kept_lines) + "\n", encoding="utf-8")
+        logger.info("Removed %s from %s", domain, list_type)
+        return True
 
     def is_blacklisted(self, domain: str) -> bool:
         """Check if domain or any parent domain is in the blacklist."""

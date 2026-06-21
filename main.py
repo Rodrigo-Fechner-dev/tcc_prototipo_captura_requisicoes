@@ -1,25 +1,7 @@
-"""
-PhishGuard — Monitor de Rede Doméstica
-=======================================
-
-Protótipo para identificação de phishing em redes domésticas
-por meio da análise de requisições DNS.
-
-Uso:
-    Executar como Administrador (necessário para captura de pacotes):
-    > python main.py
-
-Requisitos:
-    - Python 3.10+
-    - Npcap instalado (https://npcap.com/)
-    - pip install -r requirements.txt
-"""
-
 import sys
 import logging
 from pathlib import Path
 
-# Ensure project root is in path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from config import LOGS_DIR
@@ -28,13 +10,15 @@ def setup_logging():
     """Configure application logging."""
     LOGS_DIR.mkdir(exist_ok=True)
 
+    handlers = [logging.FileHandler(LOGS_DIR / "phishguard.log", encoding="utf-8")]
+    if sys.stdout is not None:
+        handlers.append(logging.StreamHandler(sys.stdout))
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
-        handlers=[
-            logging.StreamHandler(sys.stdout),
-        ],
+        handlers=handlers,
     )
 
 def check_admin():
@@ -45,7 +29,6 @@ def check_admin():
     if ctypes.windll.shell32.IsUserAnAdmin():
         return True
 
-    # MB_YESNO (0x04) | MB_ICONQUESTION (0x20)
     result = ctypes.windll.user32.MessageBoxW(
         0,
         "O PhishGuard precisa de permissões de Administrador para "
@@ -60,14 +43,18 @@ def check_admin():
 
     IDYES = 6
     if result == IDYES:
-        import os
-        script = os.path.abspath(sys.argv[0])
-        ctypes.windll.shell32.ShellExecuteW(
-            None, "runas", sys.executable, f'"{script}"', None, 1,
-        )
+        if getattr(sys, "frozen", False):
+            ctypes.windll.shell32.ShellExecuteW(
+                None, "runas", sys.executable, "", None, 1,
+            )
+        else:
+            import os
+            script = os.path.abspath(sys.argv[0])
+            ctypes.windll.shell32.ShellExecuteW(
+                None, "runas", sys.executable, f'"{script}"', None, 1,
+            )
         sys.exit(0)
 
-    # User chose No — continue without admin
     logging.warning(
         "⚠️  Continuando sem privilégios de Administrador. "
         "A captura de pacotes pode falhar."

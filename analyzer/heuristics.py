@@ -1,16 +1,14 @@
 """
 PhishGuard — Heuristic Analysis Engine
 
-Applies rule-based heuristics to detect phishing patterns in domain names.
-Each rule returns a HeuristicMatch with a score contribution (0-100).
-
 Rules implemented:
+    0. IDN / Punycode / Unicode homoglyph (Cyrillic/Greek look-alikes)
     1. Typosquatting detection (Levenshtein distance to popular domains)
     2. Suspicious TLD check (.xyz, .tk, .ml, etc.)
     3. Suspicious keyword detection (login, verify, secure, etc.)
     4. Excessive subdomain depth
     5. Direct IP access (no hostname)
-    6. Homograph attack patterns (character substitution)
+    6. Homograph attack patterns (ASCII character substitution)
     7. Domain length anomaly
 """
 
@@ -45,7 +43,6 @@ def _levenshtein_distance(s1: str, s2: str) -> int:
     return prev_row[-1]
 
 
-# Common character substitutions used in homograph attacks
 HOMOGRAPH_MAP = {
     "0": "o", "1": "l", "l": "i", "rn": "m",
     "vv": "w", "cl": "d", "nn": "m", "5": "s",
@@ -54,6 +51,38 @@ HOMOGRAPH_MAP = {
 
 # Regex for IP-based domains
 IP_PATTERN = re.compile(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$")
+
+# Caracteres Unicode confundíveis (cirílico/grego) → equivalente latino.
+# Usado para "achatar" homóglifos antes de comparar com domínios populares.
+UNICODE_CONFUSABLES = {
+    # Cirílico
+    "а": "a", "б": "b", "в": "b", "е": "e", "ё": "e", "к": "k", "м": "m",
+    "н": "h", "о": "o", "р": "p", "с": "c", "т": "t", "у": "y", "х": "x",
+    "і": "i", "ј": "j", "ѕ": "s", "ԁ": "d", "ӏ": "l", "һ": "h", "г": "r",
+    "д": "d", "л": "n", "п": "n", "и": "u", "ц": "u", "ч": "y", "ь": "b",
+    # Grego
+    "ο": "o", "α": "a", "ρ": "p", "ι": "i", "ν": "v", "τ": "t", "ε": "e",
+    "κ": "k", "μ": "m", "χ": "x", "υ": "u", "ζ": "z", "η": "n", "σ": "o",
+    "ω": "w", "γ": "y", "θ": "o", "β": "b",
+}
+
+# Sufixos de segundo nível (TLDs compostos) p/ achar o rótulo registrável.
+COMPOUND_SUFFIXES = {
+    "com.br", "net.br", "org.br", "gov.br", "edu.br", "art.br", "blog.br",
+    "co.uk", "org.uk", "gov.uk", "com.au", "co.jp", "com.mx", "com.ar",
+}
+
+
+def _char_script(ch: str) -> str:
+    """Classifica o alfabeto de um caractere (para detectar mistura de scripts)."""
+    o = ord(ch)
+    if 0x0400 <= o <= 0x04FF:
+        return "CYRILLIC"
+    if 0x0370 <= o <= 0x03FF:
+        return "GREEK"
+    if (0x41 <= o <= 0x5A) or (0x61 <= o <= 0x7A) or (0x00C0 <= o <= 0x024F):
+        return "LATIN"
+    return "OTHER"
 
 
 class HeuristicAnalyzer:
@@ -64,7 +93,54 @@ class HeuristicAnalyzer:
 
     def __init__(self):
         self._popular_domains: list[str] = self._load_popular_domains()
+        # Rótulos registráveis dos populares (ex: "itau.com.br" → "itau"),
+        # usados na detecção de homóglifo Unicode/Punycode.
+        self._popular_labels: set[str] = {
+            self._registrable_label(d) for d in self._popular_domains
+        }
         logger.info("Loaded %d popular domains for typosquatting check", len(self._popular_domains))
+
+    @staticmethod
+    def _registrable_label(domain: str) -> str:
+        """Retorna o rótulo registrável (SLD), tratando TLDs compostos (.com.br)."""
+        parts = domain.split(".")
+        if len(parts) >= 3 and ".".join(parts[-2:]) in COMPOUND_SUFFIXES:
+            return parts[-3]
+        if len(parts) >= 2:
+            return parts[-2]
+        return parts[0]
+
+    @staticmethod
+    def _registrable_domain(domain: str) -> str:
+        """
+        Retorna o domínio registrável completo, tratando TLDs compostos.
+
+        Ex.: "secure.portaldoconsumidor.com.br" → "portaldoconsumidor.com.br"
+             "evil.g00gle.com"                  → "g00gle.com"
+
+        Evita o falso positivo em que ".com.br" era reduzido a "com.br" e
+        casava com "gov.br" por distância de edição.
+        """
+        parts = domain.split(".")
+        if len(parts) >= 3 and ".".join(parts[-2:]) in COMPOUND_SUFFIXES:
+            return ".".join(parts[-3:])
+        if len(parts) >= 2:
+            return ".".join(parts[-2:])
+        return domain
+
+    @staticmethod
+    def _decode_idn(domain: str) -> str:
+        """Decodifica rótulos Punycode (xn--) para Unicode; os demais ficam iguais."""
+        out = []
+        for label in domain.split("."):
+            if label.startswith("xn--"):
+                try:
+                    out.append(label[4:].encode("ascii").decode("punycode"))
+                except Exception:
+                    out.append(label)
+            else:
+                out.append(label)
+        return ".".join(out)
 
     @staticmethod
     def _load_popular_domains() -> list[str]:
@@ -90,6 +166,11 @@ class HeuristicAnalyzer:
         # Skip very short or internal domains
         if len(domain) < 4 or domain.endswith(".local") or domain.endswith(".lan"):
             return matches
+
+        # Rule 0: IDN / Punycode / homóglifo Unicode (cirílico, grego)
+        match = self._check_idn_homograph(domain)
+        if match:
+            matches.append(match)
 
         # Rule 1: Typosquatting
         match = self._check_typosquatting(domain)
@@ -128,17 +209,79 @@ class HeuristicAnalyzer:
 
         return matches
 
+    def _check_idn_homograph(self, domain: str) -> HeuristicMatch | None:
+        """
+        Detecta ataques baseados em Punycode (xn--) e homóglifos Unicode
+        (caracteres cirílicos/gregos que imitam letras latinas).
+
+        Estratégia:
+            1. Decodifica rótulos Punycode para Unicode.
+            2. "Achata" caracteres confundíveis para o equivalente latino,
+               gerando um esqueleto ASCII.
+            3. Se o esqueleto imita uma marca popular → perigoso.
+            4. Se mistura alfabetos (latino + cirílico/grego) → perigoso.
+            5. Punycode/não-latino sem correspondência → suspeito.
+        """
+        had_punycode = "xn--" in domain
+        decoded = self._decode_idn(domain)
+        letters = [c for c in decoded if c.isalpha()]
+        non_ascii = [c for c in letters if ord(c) > 127]
+
+        # Sem IDN/Punycode aqui — deixa para as regras ASCII.
+        if not had_punycode and not non_ascii:
+            return None
+
+        # Achata confundíveis e compara o rótulo registrável aos populares.
+        skeleton = "".join(UNICODE_CONFUSABLES.get(c, c) for c in decoded).lower()
+        skeleton_label = self._registrable_label(skeleton)
+
+        matched = None
+        for popular_label in self._popular_labels:
+            if popular_label and _levenshtein_distance(skeleton_label, popular_label) <= 1:
+                matched = popular_label
+                break
+
+        scripts = {_char_script(c) for c in letters}
+        mixed = len(scripts & {"LATIN", "CYRILLIC", "GREEK"}) > 1
+        shown = decoded if decoded != domain else domain
+
+        if matched:
+            return HeuristicMatch(
+                rule_name="idn_homograph",
+                description=f'Domínio imita "{matched}" via caracteres Unicode/Punycode (real: "{shown}")',
+                score=70,
+                details=f"decoded={decoded}, skeleton={skeleton_label}, similar_to={matched}",
+            )
+        if mixed:
+            return HeuristicMatch(
+                rule_name="idn_mixed_script",
+                description=f'Mistura de alfabetos no domínio ("{shown}") — típico de homóglifo',
+                score=70,
+                details=f"decoded={decoded}, scripts={sorted(scripts)}",
+            )
+        if non_ascii and skeleton.isascii():
+            return HeuristicMatch(
+                rule_name="idn_homoglyph",
+                description=f'Caracteres não-latinos imitando letras comuns ("{shown}")',
+                score=65,
+                details=f"decoded={decoded}, skeleton={skeleton}",
+            )
+        if had_punycode:
+            return HeuristicMatch(
+                rule_name="punycode_idn",
+                description=f'Domínio internacionalizado (Punycode) com caracteres não-latinos ("{shown}")',
+                score=40,
+                details=f"decoded={decoded}",
+            )
+        return None
+
     def _check_typosquatting(self, domain: str) -> HeuristicMatch | None:
         """
         Check if domain is suspiciously similar to a popular domain.
         Uses Levenshtein distance for fuzzy matching.
         """
         # Extract the registrable domain (e.g., "evil.g00gle.com" → "g00gle.com")
-        parts = domain.split(".")
-        if len(parts) >= 2:
-            registrable = ".".join(parts[-2:])
-        else:
-            registrable = domain
+        registrable = self._registrable_domain(domain)
 
         threshold = config.analyzer.max_levenshtein_distance
         for popular in self._popular_domains:
@@ -160,33 +303,38 @@ class HeuristicAnalyzer:
                 return HeuristicMatch(
                     rule_name="suspicious_tld",
                     description=f'Extensão de domínio suspeita: "{tld}"',
-                    score=20,
+                    # Sinal fraco: sozinho já atinge o limiar de "suspeito" (30),
+                    # mas precisa de outro sinal para escalar a "perigoso".
+                    score=30,
                     details=f"TLD: {tld}",
                 )
         return None
 
     @staticmethod
     def _check_suspicious_keywords(domain: str) -> HeuristicMatch | None:
-        """Check for keywords commonly found in phishing URLs."""
-        found = [kw for kw in config.analyzer.suspicious_keywords if kw in domain]
+        
+        registrable = HeuristicAnalyzer._registrable_label(domain)
+        found = [kw for kw in config.analyzer.suspicious_keywords if kw in registrable]
         if found:
             return HeuristicMatch(
                 rule_name="suspicious_keywords",
                 description=f'Palavras suspeitas no domínio: {", ".join(found)}',
-                score=15 * min(len(found), 3),  # Cap at 45
-                details=f"Keywords: {found}",
+                # 1 palavra = 30 (suspeito sozinho); cada palavra extra soma 10,
+                # até o teto de 50 — combinada com TLD/marca escala a perigoso.
+                score=min(30 + 10 * (len(found) - 1), 50),
+                details=f"Keywords em '{registrable}': {found}",
             )
         return None
 
     @staticmethod
     def _check_subdomain_depth(domain: str) -> HeuristicMatch | None:
-        """Flag domains with excessive subdomain levels (potential obfuscation)."""
         depth = domain.count(".")
-        if depth >= 4:
+
+        if depth >= 5:
             return HeuristicMatch(
                 rule_name="excessive_subdomains",
                 description=f"Domínio com {depth} níveis — possível ofuscação",
-                score=25,
+                score=35,  # Sinal médio
                 details=f"Subdomain depth: {depth}",
             )
         return None
@@ -198,7 +346,7 @@ class HeuristicAnalyzer:
             return HeuristicMatch(
                 rule_name="direct_ip",
                 description="Acesso direto via IP — sites legítimos usam nomes de domínio",
-                score=35,
+                score=60,  # Sinal forte: suspeito sozinho, perigoso com +1 sinal
                 details=f"IP: {domain}",
             )
         return None
@@ -214,8 +362,7 @@ class HeuristicAnalyzer:
         characters like 'l', '0', or '1'.
         """
         # Extract registrable part (e.g., "sub.g00gle.com" → "g00gle.com")
-        parts = domain.split(".")
-        registrable = ".".join(parts[-2:]) if len(parts) >= 2 else domain
+        registrable = self._registrable_domain(domain)
 
         for fake, real in HOMOGRAPH_MAP.items():
             if fake not in registrable:
@@ -225,7 +372,6 @@ class HeuristicAnalyzer:
             if normalized == registrable:
                 continue
 
-            # Only alert if the normalized domain is close to a popular one
             for popular in self._popular_domains:
                 dist = _levenshtein_distance(normalized, popular)
                 if dist <= 1:
@@ -235,7 +381,7 @@ class HeuristicAnalyzer:
                             f'Possível ataque homográfico: "{fake}" substituindo "{real}" '
                             f'— domínio similar a "{popular}"'
                         ),
-                        score=45,
+                        score=65,  
                         details=f"Pattern: {fake}→{real}, normalized: {normalized}, similar_to: {popular}",
                     )
         return None
@@ -247,7 +393,7 @@ class HeuristicAnalyzer:
             return HeuristicMatch(
                 rule_name="long_domain",
                 description=f"Domínio incomumente longo ({len(domain)} caracteres)",
-                score=15,
+                score=30,  
                 details=f"Length: {len(domain)}",
             )
         return None

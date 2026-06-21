@@ -1,9 +1,6 @@
 """
 PhishGuard — Blacklist Updater
 
-Downloads phishing domain lists from trusted public sources
-and merges them into the local blacklist file.
-
 Sources:
     - OpenPhish Community Feed (free, no API key)
     - URLhaus by abuse.ch (free, open data)
@@ -150,12 +147,7 @@ def download_source(name: str, source: dict) -> set[str]:
 
 
 def update_blacklist(sources: list[str] | None = None):
-    """
-    Download from specified sources and merge into local blacklist.
 
-    Args:
-        sources: List of source names to download. None = all sources.
-    """
     if sources is None:
         sources = list(SOURCES.keys())
 

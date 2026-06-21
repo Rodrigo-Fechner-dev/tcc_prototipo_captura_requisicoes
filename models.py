@@ -1,21 +1,13 @@
-"""
-PhishGuard — Domain Models
-
-Core data structures used across all modules. Using dataclasses
-for clean serialization and type safety.
-"""
-
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 
-
 class TrafficType(Enum):
-    """Classification of the traffic origin."""
-    ACTIVE = "active"           # User-driven browsing
-    BACKGROUND = "background"   # Telemetry, syncs, background apps
-    CDN = "cdn"                 # Content Delivery Networks, Ads, Trackers
-    CACHE = "cache"             # Resolver/socket cache entries and DNS answers
+    
+    ACTIVE = "active"
+    BACKGROUND = "background"
+    CDN = "cdn"
+    CACHE = "cache"
 
     @property
     def label_pt(self) -> str:
@@ -29,14 +21,12 @@ class TrafficType(Enum):
 
 
 class ThreatLevel(Enum):
-    """Classification levels for DNS events."""
     SAFE = "safe"
     SUSPICIOUS = "suspicious"
     MALICIOUS = "malicious"
 
     @property
     def label_pt(self) -> str:
-        """Human-readable label in Portuguese."""
         labels = {
             "safe": "Seguro",
             "suspicious": "Suspeito",
@@ -46,11 +36,10 @@ class ThreatLevel(Enum):
 
     @property
     def color(self) -> str:
-        """Color hex for GUI display."""
         colors = {
-            "safe": "#2ecc71",       # Green
-            "suspicious": "#f39c12", # Orange/Yellow
-            "malicious": "#e74c3c",  # Red
+            "safe": "#2ecc71",
+            "suspicious": "#f39c12",
+            "malicious": "#e74c3c",
         }
         return colors[self.value]
 
@@ -73,7 +62,7 @@ class DNSEvent:
     src_ip: str
     dst_ip: str
     protocol: str = "UDP"
-    event_type: str = "query"  # "query" or "response"
+    event_type: str = "query"
     traffic_type: TrafficType = TrafficType.ACTIVE
     answers: list[str] = field(default_factory=list)
 
@@ -84,16 +73,14 @@ class DNSEvent:
 
 @dataclass
 class HeuristicMatch:
-    """A single heuristic rule match."""
     rule_name: str
     description: str
-    score: int  # 0-100 contribution to total score
+    score: int
     details: str = ""
 
 
 @dataclass
 class AnalysisResult:
-    """Complete analysis output for a DNS event."""
     event: DNSEvent
     threat_level: ThreatLevel
     total_score: int  # 0-100
@@ -104,7 +91,6 @@ class AnalysisResult:
 
     @property
     def reasons(self) -> list[str]:
-        """Human-readable list of reasons for the classification."""
         result = []
         if self.is_blacklisted:
             result.append("Domínio encontrado em lista de phishing conhecida")

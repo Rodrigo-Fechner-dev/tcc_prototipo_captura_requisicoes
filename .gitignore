@@ -20,6 +20,14 @@ logs/
 exports/
 *.log
 
+# PyInstaller — ignora os intermediários, mas MANTÉM o dist/PhishGuard.exe
+# versionado (para o usuário rodar direto após o clone).
+build/
+dist/data/
+dist/logs/
+dist/exports/
+*.pyz
+
 # IDEs
 .vscode/
 .idea/

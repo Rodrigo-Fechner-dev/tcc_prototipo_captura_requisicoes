@@ -1,26 +1,3 @@
-"""
-PhishGuard — Main GUI Application
-
-The main application window built with CustomTkinter.
-Provides real-time DNS monitoring with visual threat classification.
-
-Layout:
-    ┌─────────────────────────────────────────────────────┐
-    │  [Stats Cards: Total | Seguro | Suspeito | Perigoso]│
-    ├───────────────────────────────┬─────────────────────┤
-    │  Event Table (Treeview)       │  Event Detail Panel  │
-    │  - Hora                       │  - Domínio           │
-    │  - Domínio                    │  - Status            │
-    │  - IP Origem                  │  - Score             │
-    │  - Status                     │  - Motivos           │
-    │                               │  - Recomendação      │
-    ├───────────────────────────────┴─────────────────────┤
-    │  [▶ Iniciar] [⏹ Parar] [🗑 Limpar] [📥 Exportar]   │
-    ├─────────────────────────────────────────────────────┤
-    │  Status Bar                                         │
-    └─────────────────────────────────────────────────────┘
-"""
-
 import queue
 import json
 import logging
@@ -32,11 +9,14 @@ from tkinter import ttk, filedialog, messagebox
 
 import customtkinter as ctk
 
-from config import config
+from config import config, BUNDLE_DIR
 from models import AnalysisResult, ThreatLevel, TrafficType
 from sniffer.capture import DNSCapture
 from analyzer.classifier import ThreatClassifier
-from gui.widgets import StatCard, StatusBar, InterfaceSelectorFrame, LegendPanel
+from gui.widgets import (
+    StatCard, StatusBar, InterfaceSelectorFrame, LegendPanel,
+    ListManagerDialog, ValidationDialog, DangerPopup,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +31,7 @@ class PhishGuardApp(ctk.CTk):
         self.title(config.gui.title)
         self.geometry(f"{config.gui.width}x{config.gui.height}")
         self.minsize(900, 600)
+        self._set_window_icon()
 
         # Set dark theme
         ctk.set_appearance_mode("dark")
@@ -62,6 +43,8 @@ class PhishGuardApp(ctk.CTk):
         self.classifier: ThreatClassifier | None = None
         self._results: list[AnalysisResult] = []
         self._cache_results: list[dict] = []
+        self._level_filter: str | None = None   # None | "safe" | "suspicious" | "malicious"
+        self._selected_card = None
         self._seen_cache_domains: set[str] = set()
         self._selected_interface: str | None = None
         self._capture_started_at: datetime | None = None
@@ -78,6 +61,19 @@ class PhishGuardApp(ctk.CTk):
 
         # Show interface selector as first screen
         self._show_interface_selector()
+
+    def _set_window_icon(self):
+        """Apply the custom window/taskbar icon (escudo de segurança)."""
+        icon_path = BUNDLE_DIR / "gui" / "escudo-de-seguranca.ico"
+        if not icon_path.exists():
+            return
+        try:
+            self.iconbitmap(str(icon_path))
+            # CustomTkinter reaplica seu próprio ícone ~200ms após o init,
+            # então reforçamos o nosso depois desse intervalo.
+            self.after(300, lambda: self.iconbitmap(str(icon_path)))
+        except Exception as exc:
+            logger.debug("Não foi possível definir o ícone da janela: %s", exc)
 
     # ------------------------------------------------------------------
     # Interface selection flow
@@ -149,6 +145,14 @@ class PhishGuardApp(ctk.CTk):
         )
         self.card_malicious.grid(row=0, column=3, padx=5, pady=5, sticky="ew")
 
+        # Cliques nos cards filtram a tabela por classificação (toggle).
+        self.card_total.set_on_click(lambda: self._on_card_click(None, self.card_total))
+        self.card_safe.set_on_click(lambda: self._on_card_click("safe", self.card_safe))
+        self.card_suspicious.set_on_click(
+            lambda: self._on_card_click("suspicious", self.card_suspicious))
+        self.card_malicious.set_on_click(
+            lambda: self._on_card_click("malicious", self.card_malicious))
+
         # === Row 1: Main Content (Table + Detail Panel) ===
         content_frame = ctk.CTkFrame(self, fg_color="transparent")
         content_frame.grid(row=1, column=0, padx=15, pady=5, sticky="nsew")
@@ -163,12 +167,12 @@ class PhishGuardApp(ctk.CTk):
         table_frame.grid_rowconfigure(2, weight=1)
 
         # Table header
-        table_header = ctk.CTkLabel(
+        self.table_header = ctk.CTkLabel(
             table_frame, text="📋 Eventos de DNS em Tempo Real",
             font=ctk.CTkFont(size=14, weight="bold"),
             anchor="w",
         )
-        table_header.grid(row=0, column=0, padx=15, pady=(12, 5), sticky="w")
+        self.table_header.grid(row=0, column=0, padx=15, pady=(12, 5), sticky="w")
 
         self.event_tabs = ctk.CTkSegmentedButton(
             table_frame,
@@ -272,6 +276,36 @@ class PhishGuardApp(ctk.CTk):
         )
         self.btn_export.grid(row=0, column=3, padx=5, pady=5)
 
+        self.btn_validate = ctk.CTkButton(
+            controls_frame, text="🔮  Validação URL",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            fg_color="#9b59b6", hover_color="#8e44ad",
+            command=self._open_validation, width=160,
+        )
+        self.btn_validate.grid(row=0, column=4, padx=5, pady=5)
+
+        # Spacer column pushes the list-manager buttons to the right edge,
+        # keeping them on the same row (aligned) as Exportar.
+        controls_frame.grid_columnconfigure(5, weight=1)
+
+        self.btn_whitelist = ctk.CTkButton(
+            controls_frame, text="Whitelist",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            fg_color="#ffffff", hover_color="#e0e0e0",
+            text_color="#000000", border_color="#000000", border_width=2,
+            command=self._open_whitelist_manager, width=130,
+        )
+        self.btn_whitelist.grid(row=0, column=6, padx=5, pady=5)
+
+        self.btn_blacklist = ctk.CTkButton(
+            controls_frame, text="Blacklist",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            fg_color="#000000", hover_color="#222222",
+            text_color="#ffffff", border_color="#ffffff", border_width=2,
+            command=self._open_blacklist_manager, width=130,
+        )
+        self.btn_blacklist.grid(row=0, column=7, padx=5, pady=5)
+
         # === Row 3: Status Bar ===
         self.status_bar = StatusBar(self)
         self.status_bar.grid(row=3, column=0, sticky="ew")
@@ -315,6 +349,7 @@ class PhishGuardApp(ctk.CTk):
         processed = 0
         max_per_cycle = 50  # Limit to keep GUI responsive
 
+        danger_result = None
         while processed < max_per_cycle:
             try:
                 event = self.event_queue.get_nowait()
@@ -325,9 +360,24 @@ class PhishGuardApp(ctk.CTk):
                 result = self.classifier.classify(event)
                 self._add_event_to_table(result)
                 self._results.append(result)
+                # Gatilho de perigo só aqui (laço da captura); a Validação de
+                # URL classifica por outro caminho e nunca o aciona.
+                if danger_result is None and result.threat_level == ThreatLevel.MALICIOUS:
+                    danger_result = result
+                    break
             elif event.event_type == "response":
                 self._add_cache_event(event.domain, event.query_type, "Resposta DNS", event.answers)
+                # Também avalia respostas DNS (Socket/Cache) para detecção de
+                # perigo — sem contar nas estatísticas, que refletem só as consultas.
+                cache_result = self.classifier.classify(event, update_stats=False)
+                if danger_result is None and cache_result.threat_level == ThreatLevel.MALICIOUS:
+                    danger_result = cache_result
+                    break
             processed += 1
+
+        # Trata a detecção de perigo: para a captura e mostra o pop-up.
+        if danger_result is not None and self.dns_capture and self.dns_capture.is_running:
+            self._handle_danger_detected(danger_result)
 
         # Update stats cards
         stats = self.classifier.get_stats()
@@ -343,13 +393,99 @@ class PhishGuardApp(ctk.CTk):
         # Schedule next poll
         self.after(config.gui.update_interval_ms, self._poll_events)
 
+    def _handle_danger_detected(self, result: AnalysisResult):
+        """Pause the capture for a live MALICIOUS hit and reveal the danger row.
+
+        Apenas PAUSA a sessão (não limpa nenhum registro) para que o usuário
+        veja na tabela exatamente onde está o perigo.
+        """
+        self._stop_capture()          # pausa a captura; preserva os registros
+        self._reveal_danger_row(result)
+        DangerPopup(
+            self,
+            domain=result.event.domain,
+            score=result.total_score,
+            reasons=result.reasons,
+            on_kill_browsers=self._kill_browsers_and_maybe_restart,
+        )
+        logger.warning(
+            "DANGER: malicious domain detected during capture: %s (score=%d)",
+            result.event.domain, result.total_score,
+        )
+
+    def _reveal_danger_row(self, result: AnalysisResult):
+        """Mostra e seleciona, na aba correta, a linha do evento perigoso."""
+        # Remove qualquer filtro ativo para garantir que o evento apareça.
+        if self._level_filter is not None:
+            self._reset_level_filter()
+
+        if result.event.event_type == "response":
+            tab, tree = "Socket/Cache", self.cache_tree
+        elif result.traffic_type in (TrafficType.BACKGROUND, TrafficType.CDN):
+            tab, tree = "Background", self.background_tree
+        else:
+            tab, tree = "Ativo", self.active_tree
+
+        self.event_tabs.set(tab)
+        self._switch_event_tab(tab)
+        children = tree.get_children()
+        if children:  # o evento perigoso foi inserido no topo (índice 0)
+            tree.selection_set(children[0])
+            tree.focus(children[0])
+            tree.see(children[0])
+
+    # Navegadores comuns no Windows encerrados em resposta a um perigo.
+    _BROWSER_PROCESSES = (
+        "chrome.exe", "msedge.exe", "firefox.exe", "opera.exe",
+        "brave.exe", "iexplore.exe", "vivaldi.exe",
+    )
+
+    def _kill_browsers_and_maybe_restart(self):
+        """Encerra os navegadores e recomenda (sem executar) reiniciar o PC."""
+        logger.warning("Resposta a perigo: encerrando navegadores")
+        # Esconde a janela de console do taskkill (evita "piscadas" de cmd).
+        no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        for proc in self._BROWSER_PROCESSES:
+            try:
+                # Encerramento "suave" (sem /F): envia um pedido de fechamento
+                # (WM_CLOSE), que o Windows Defender raramente bloqueia, ao
+                # contrário do encerramento forçado.
+                subprocess.run(
+                    ["taskkill", "/IM", proc],
+                    capture_output=True, timeout=10, check=False,
+                    creationflags=no_window,
+                )
+            except Exception as exc:
+                logger.error("Falha ao encerrar %s: %s", proc, exc)
+
+        # Apenas recomenda reiniciar — não reinicia nem fecha o PhishGuard.
+        messagebox.showwarning(
+            "Recomendação de segurança",
+            "Os navegadores foram encerrados.\n\n"
+            "⚠️ Recomendamos REINICIAR o computador para garantir que nenhuma "
+            "sessão maliciosa permaneça ativa.",
+            parent=self,
+        )
+
     def _add_event_to_table(self, result: AnalysisResult):
-        """Add a classified event to the treeview table."""
+        """Add a classified event to the table, respecting the active filter."""
+        if not self._row_passes_filter(result):
+            return
+        self._insert_result_row(result, scroll=True, cap=True)
+
+    def _row_passes_filter(self, result: AnalysisResult) -> bool:
+        """True if the result matches the active threat-level filter (or no filter)."""
+        return (self._level_filter is None
+                or result.threat_level.value == self._level_filter)
+
+    def _insert_result_row(self, result: AnalysisResult, scroll: bool = False,
+                           cap: bool = False):
+        """Insert one classified event row into the proper treeview."""
         event = result.event
         level = result.threat_level
 
         status_text = f"{level.emoji} {level.label_pt}"
-        
+
         # Determine row color tag
         if level == ThreatLevel.SAFE:
             tag = result.traffic_type.value
@@ -373,13 +509,66 @@ class PhishGuardApp(ctk.CTk):
         )
 
         # Auto-scroll to top for new events
-        if tree is self.tree:
+        if scroll and tree is self.tree:
             tree.see(item_id)
 
         # Limit table size to prevent memory issues
-        children = tree.get_children()
-        if len(children) > 5000:
-            tree.delete(children[-1])
+        if cap:
+            children = tree.get_children()
+            if len(children) > 5000:
+                tree.delete(children[-1])
+
+    def _on_card_click(self, level: str | None, card):
+        """Filter the event tables by threat level (toggle off if re-clicked)."""
+        if level is None or self._level_filter == level:
+            # TOTAL, or clicking the active filter again → clear filter.
+            self._level_filter = None
+        else:
+            self._level_filter = level
+
+        # Update the selected-card highlight.
+        if self._selected_card is not None:
+            self._selected_card.set_selected(False)
+        if self._level_filter is not None:
+            card.set_selected(True)
+            self._selected_card = card
+        else:
+            self._selected_card = None
+
+        self._update_table_header()
+        self._rebuild_event_tables()
+
+    def _update_table_header(self):
+        """Reflete o filtro ativo no cabeçalho da tabela (para ficar evidente)."""
+        labels = {
+            "safe": "🟢 Seguro", "suspicious": "🟡 Suspeito", "malicious": "🔴 Perigoso",
+        }
+        if self._level_filter in labels:
+            self.table_header.configure(
+                text=f"📋 Eventos de DNS — filtro: {labels[self._level_filter]} "
+                     f"(clique em TOTAL para ver todos)"
+            )
+        else:
+            self.table_header.configure(text="📋 Eventos de DNS em Tempo Real")
+
+    def _reset_level_filter(self):
+        """Limpa o filtro de classificação e re-exibe todos os eventos."""
+        self._level_filter = None
+        if self._selected_card is not None:
+            self._selected_card.set_selected(False)
+            self._selected_card = None
+        self._update_table_header()
+        self._rebuild_event_tables()
+
+    def _rebuild_event_tables(self):
+        """Re-render the Ativo/Background tables from results, applying the filter."""
+        for tree in (self.active_tree, self.background_tree):
+            tree.delete(*tree.get_children())
+
+        matching = [r for r in self._results if self._row_passes_filter(r)]
+        # Oldest→newest insertion (each at top) yields newest-first display.
+        for result in matching[-5000:]:
+            self._insert_result_row(result, scroll=False, cap=False)
 
     def _add_cache_event(self, domain: str, query_type: str, source: str, answers: list[str] | None = None):
         """Add a DNS answer or resolver-cache entry to the Socket/Cache tab."""
@@ -493,6 +682,8 @@ class PhishGuardApp(ctk.CTk):
             self.btn_start.configure(state="disabled")
             self.btn_stop.configure(state="normal")
             self.status_bar.set_running()
+            # Garante que uma captura nova comece sem filtro (mostrando tudo).
+            self._reset_level_filter()
             logger.info("Capture started by user")
         except Exception as e:
             messagebox.showerror(
@@ -530,6 +721,7 @@ class PhishGuardApp(ctk.CTk):
         self.card_safe.update_value(0)
         self.card_suspicious.update_value(0)
         self.card_malicious.update_value(0)
+        self._reset_level_filter()  # volta a mostrar tudo (sem filtro)
         logger.info("Events cleared by user")
 
     def _export_events(self):
@@ -580,6 +772,53 @@ class PhishGuardApp(ctk.CTk):
             f"✅ {len(dns_events) + len(self._cache_results)} registros exportados para:\n{filepath}"
         )
         logger.info("Exported %d records to %s", len(dns_events) + len(self._cache_results), filepath)
+
+    def _open_whitelist_manager(self):
+        """Open the dialog to view/add/remove whitelisted domains."""
+        self._open_list_manager(
+            list_type="whitelist",
+            title="✅  Whitelist — Domínios Confiáveis",
+            accent_color="#27ae60",
+        )
+
+    def _open_blacklist_manager(self):
+        """Open the dialog to view/add/remove blacklisted domains."""
+        self._open_list_manager(
+            list_type="blacklist",
+            title="⛔  Blacklist — Domínios Maliciosos",
+            accent_color="#e74c3c",
+        )
+
+    def _open_list_manager(self, list_type: str, title: str, accent_color: str):
+        """Open (or focus) the list manager dialog for the given list."""
+        existing = getattr(self, "_list_manager", None)
+        if existing is not None and existing.winfo_exists():
+            existing.destroy()
+
+        self._list_manager = ListManagerDialog(
+            self,
+            list_type=list_type,
+            title=title,
+            accent_color=accent_color,
+            checker=self.classifier.blacklist,
+            on_change=self._on_list_changed,
+        )
+
+    def _on_list_changed(self):
+        """Refresh after a whitelist/blacklist edit: full reload from disk."""
+        # Recarrega as duas listas do arquivo por completo, garantindo que a
+        # lista usada na classificação fique 100% sincronizada com o disco.
+        self.classifier.blacklist.reload()
+        self.status_bar.set_blacklist_info(self.classifier.blacklist.blacklist_count)
+
+    def _open_validation(self):
+        """Open (or focus) the batch URL validation dialog."""
+        existing = getattr(self, "_validation_dialog", None)
+        if existing is not None and existing.winfo_exists():
+            existing.destroy()
+        self._validation_dialog = ValidationDialog(
+            self, classifier=self.classifier, accent_color="#9b59b6",
+        )
 
     def _write_capture_summary(self):
         """Write a single compact TXT summary for the latest capture."""

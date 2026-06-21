@@ -1,20 +1,49 @@
 """
 PhishGuard — Centralized Configuration
-
-All application settings are defined here as dataclasses for
-type safety and easy modification. No magic strings scattered
-across the codebase.
 """
 
-import os
+import sys
+import shutil
 from pathlib import Path
 from dataclasses import dataclass, field
 
-BASE_DIR = Path(__file__).parent
-DATA_DIR = BASE_DIR / "data"
-LOGS_DIR = BASE_DIR / "logs"
+# Modo empacotado (PyInstaller) vs. execução normal por script.
+FROZEN = getattr(sys, "frozen", False)
 
-LOGS_DIR.mkdir(exist_ok=True)
+if FROZEN:
+    # Recursos embutidos (somente leitura) vivem em sys._MEIPASS.
+    # data/ e logs/ ficam na RAIZ do projeto: se o .exe está em "dist/",
+    # sobe um nível; assim não são criados espalhados onde o exe roda.
+    exe_dir = Path(sys.executable).parent
+    APP_DIR = exe_dir.parent if exe_dir.name.lower() == "dist" else exe_dir
+    BUNDLE_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
+else:
+    APP_DIR = Path(__file__).parent
+    BUNDLE_DIR = APP_DIR
+
+BASE_DIR = APP_DIR
+DATA_DIR = APP_DIR / "data"
+LOGS_DIR = APP_DIR / "logs"
+
+
+def _provision_data():
+    if not FROZEN:
+        return
+    bundled = BUNDLE_DIR / "data"
+    if not bundled.exists():
+        return
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    for src in bundled.glob("*"):
+        dest = DATA_DIR / src.name
+        if src.is_file() and not dest.exists():
+            try:
+                shutil.copy2(src, dest)
+            except OSError:
+                pass
+
+
+_provision_data()
+LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @dataclass

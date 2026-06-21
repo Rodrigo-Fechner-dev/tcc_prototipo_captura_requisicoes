@@ -1,16 +1,3 @@
-"""
-PhishGuard — DNS Packet Capture Module
-
-Captures DNS traffic on the local network using Scapy with Npcap (Windows).
-Runs in a background thread to keep the GUI responsive.
-
-Architecture:
-    DNSCapture (thread) → parses DNS packets → puts DNSEvent in Queue → GUI polls Queue
-
-Privacy: Only metadata is captured (domain, IPs, ports, timestamps).
-         No payload/content is stored, per TCC ethical requirements.
-"""
-
 import threading
 import queue
 import logging
@@ -22,28 +9,14 @@ from models import DNSEvent, TrafficType
 
 logger = logging.getLogger(__name__)
 
-# Capture all traffic on port 53 (UDP and TCP).
-# We handle the TCP 2-byte length prefix manually to avoid dropping packets.
 DNS_FILTER = "port 53"
 
-# DNS query type mapping
 QUERY_TYPES = {
     1: "A", 2: "NS", 5: "CNAME", 6: "SOA", 12: "PTR",
     15: "MX", 16: "TXT", 28: "AAAA", 33: "SRV", 255: "ANY",
 }
 
-
 class DNSCapture:
-    """
-    Threaded DNS packet sniffer using Scapy.
-
-    Usage:
-        q = queue.Queue()
-        capture = DNSCapture(event_queue=q)
-        capture.start()
-        # ... poll q for DNSEvent objects ...
-        capture.stop()
-    """
 
     def __init__(self, event_queue: queue.Queue, interface: str | None = None):
         self.event_queue = event_queue
@@ -51,8 +24,8 @@ class DNSCapture:
         self._running = False
         self._thread: threading.Thread | None = None
         self._packet_count = 0
-        self._dropped_count = 0  # packets seen but not DNS
-        self._active_iface: str = ""  # resolved interface name
+        self._dropped_count = 0
+        self._active_iface: str = ""
 
     def start(self):
         """Start capturing DNS packets in a background thread."""
@@ -64,7 +37,6 @@ class DNSCapture:
         self._packet_count = 0
         self._dropped_count = 0
 
-        # Log all available interfaces to aid debugging
         try:
             ifaces = get_if_list()
             logger.info("Available interfaces: %s", ifaces)
@@ -92,13 +64,7 @@ class DNSCapture:
         return self._packet_count
 
     def _capture_loop(self):
-        """
-        Main capture loop. Uses short 1-second timeout cycles so the
-        _running flag is checked frequently for a clean stop on Windows.
-
-        Uses prn= callback (store=False) so packets are processed
-        immediately as they arrive — no buffering delay.
-        """
+        
         logger.info("Capture thread started")
         cycle = 0
         try:
